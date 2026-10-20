@@ -1,0 +1,8 @@
+/target
+/build*/
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage
+__pycache__/
+*.swp
