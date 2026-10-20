@@ -90,7 +90,7 @@ pub struct Engine<'s> {
     a: &'s mut dyn KeyStore,
     b: &'s mut dyn KeyStore,
     keys: Vec<Key>,
-    blobs: Vec<(Vec<u8>, Vec<u8>, Key)>,           // (a, b, kek)
+    blobs: Vec<(Vec<u8>, Vec<u8>, Key)>, // (a, b, kek)
     sealed: Vec<Sealed>,
     pub stats: Stats,
     /// Restrict to ops a PKCS#11 token supports cheaply (no hkdf success path
