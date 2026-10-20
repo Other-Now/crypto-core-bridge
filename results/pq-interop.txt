@@ -1,0 +1,13 @@
+mlkem_768_keygen_seed_test: 100 tests
+mlkem_768_encaps_test: 265 tests
+mldsa_65_verify_test: 210 tests
+[1/3] Building C object CMakeFiles/nanokem_mlkem.dir/mnt/d/self_projects/crypto-core-bridge/third_party/nanokem/src/mlkem768.c.o
+[2/3] Linking C static library libnanokem_mlkem.a
+[3/3] Linking CXX executable pq_interop
+OpenSSL 3.5.9 29 Sep 2026
+ML-KEM-768 keygen from seed (Wycheproof, 100): nanokem ek 100/100 | OpenSSL ek 100/100, dk 100/100
+ML-KEM-768 encaps (Wycheproof): valid (c,K) byte-exact nanokem 133/133, OpenSSL 133/133 | invalid ek rejected nanokem 132/132, OpenSSL 132/132
+ML-KEM-768 cross-implementation, 1000 random seeds: ek 1000/1000, (ct,ss) 1000/1000, cross-decaps 1000/1000, implicit rejection 1000/1000
+ML-DSA-65 verify (Wycheproof): 210/210 as expected (79 valid, 131 invalid)
+ML-DSA-65 seed keygen + deterministic sign/verify/tamper: ok (signature 3309 bytes)
+223 passed, 0 failed

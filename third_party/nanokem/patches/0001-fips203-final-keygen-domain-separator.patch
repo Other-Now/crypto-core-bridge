@@ -1,0 +1,19 @@
+--- a/src/crypto/mlkem768.c
++++ b/src/crypto/mlkem768.c
+@@ -321,7 +321,15 @@ void nk_mlkem768_keygen(const uint8_t d[32], const uint8_t z[32], nk_mlkem768_dk
+      * trap this project's verify-against-real-vectors discipline exists
+      * to catch.) */
+     uint8_t g_out[64];
+-    nk_sha3_512(d, 32, g_out);
++    /* crypto-core-bridge patch 0001: FIPS 203 (final, Aug 2024) Algorithm 13
++     * line 1 is (rho, sigma) <- G(d || k). The plain G(d) above follows the
++     * 2023 draft; it fails all 100 Wycheproof keygen-from-seed vectors and
++     * every seed cross-check against OpenSSL 3.5 (see third_party/nanokem/
++     * README.md). */
++    uint8_t d_k[33];
++    memcpy(d_k, d, 32);
++    d_k[32] = (uint8_t)K;
++    nk_sha3_512(d_k, sizeof d_k, g_out);
+     const uint8_t *rho = g_out;
+     const uint8_t *sigma = g_out + 32;
+     memcpy(out_dk->ek.rho, rho, 32);

@@ -1,0 +1,16 @@
+mlkem_768_keygen_seed_test: 100 tests
+mlkem_768_encaps_test: 265 tests
+mldsa_65_verify_test: 210 tests
+[1/2] Building CXX object CMakeFiles/pq_interop.dir/pq_interop.cpp.o
+[2/2] Linking CXX executable pq_interop
+FAIL /mnt/d/self_projects/crypto-core-bridge/pq/pq_interop.cpp:160: nk_ok == n nanokem keygen: 0/100
+FAIL /mnt/d/self_projects/crypto-core-bridge/pq/pq_interop.cpp:222: same_ek == rounds ek mismatches: 1000
+FAIL /mnt/d/self_projects/crypto-core-bridge/pq/pq_interop.cpp:223: same_enc == rounds encaps mismatches: 1000
+FAIL /mnt/d/self_projects/crypto-core-bridge/pq/pq_interop.cpp:224: cross_ok == rounds cross-decaps failures: 1000
+OpenSSL 3.5.9 29 Sep 2026
+ML-KEM-768 keygen from seed (Wycheproof, 100): nanokem ek 0/100 | OpenSSL ek 100/100, dk 100/100
+ML-KEM-768 encaps (Wycheproof): valid (c,K) byte-exact nanokem 133/133, OpenSSL 133/133 | invalid ek rejected nanokem 132/132, OpenSSL 132/132
+ML-KEM-768 cross-implementation, 1000 random seeds: ek 0/1000, (ct,ss) 0/1000, cross-decaps 0/1000, implicit rejection 1000/1000
+ML-DSA-65 verify (Wycheproof): 210/210 as expected (79 valid, 131 invalid)
+ML-DSA-65 seed keygen + deterministic sign/verify/tamper: ok (signature 3309 bytes)
+219 passed, 4 failed
