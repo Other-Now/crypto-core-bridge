@@ -1,0 +1,21 @@
+[package]
+name = "ccb-cpp"
+version = "0.1.0"
+description = "The C++ crypto core behind a cxx bridge, plus the cross-language conformance suite"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+ccb = { path = "../ccb" }
+cxx = "1.0"
+
+[build-dependencies]
+cxx-build = "1.0"
+
+[dev-dependencies]
+serde_json = "1"
+hex = "0.4"
+cryptoki = "0.12"
+zeroize = "1.8"

@@ -1,0 +1,28 @@
+[package]
+name = "ccb"
+version = "0.1.0"
+description = "Rust implementation of the crypto-core-bridge key store, exported over a C ABI"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+# Exports ccb_test_panic(), used to prove panics never cross the boundary.
+test-hooks = []
+
+[dependencies]
+aes = { version = "0.8", features = ["zeroize"] }
+aes-gcm = { version = "0.10", features = ["zeroize"] }
+aes-kw = "0.2"
+hkdf = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2.6"
+zeroize = { version = "1.8", features = ["derive"] }
+getrandom = "0.2"
+
+[target.'cfg(not(miri))'.dependencies]
+cryptoki = "0.12"
