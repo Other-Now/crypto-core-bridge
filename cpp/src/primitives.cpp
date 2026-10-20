@@ -49,10 +49,10 @@ const unsigned char* nz(View v) {
 }
 
 // Algorithms are fetched once and kept for the life of the process. A fetch
-// is a provider lookup under a lock; doing it on every call (the obvious
-// way to write EVP code) cost ~1 us per operation here, which is most of a
-// small HMAC. OpenSSL 3 documents this "explicit fetch, then reuse" pattern.
-// The handles are intentionally never freed (still reachable at exit).
+// is a provider lookup under a lock: 150-180 ns per fetch+free on the CI
+// runner (bench "attrib" rows), paid on every call by the obvious way of
+// writing EVP code. OpenSSL 3 documents this "explicit fetch, then reuse"
+// pattern. The handles are intentionally never freed (still reachable).
 EVP_MAC* hmac_alg() {
     static EVP_MAC* m = EVP_MAC_fetch(nullptr, "HMAC", nullptr);
     return m;

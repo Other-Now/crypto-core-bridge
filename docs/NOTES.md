@@ -117,8 +117,11 @@ zeroize test's control finds 5).
 5. Rust PKCS#11 is ~1.4× the C++ one: `cryptoki::get_attributes` can't
    pre-size a variable-length attribute (`CKA_ID`), so it makes two
    `C_GetAttributeValue` calls, at ~40 µs each on SoftHSM token objects.
-6. OpenSSL 3's per-call `EVP_*_fetch` (see MIGRATION.md for the measured
-   effect of fetching once).
+6. OpenSSL 3 per-call overhead: an algorithm fetch is 153–181 ns per call
+   (bench attribution rows); the core fetches once. Rust is still 0.28–0.73×
+   of C++ on small ops: the rest is provider-path setup, not decomposed
+   further. Bulk GCM is the reverse (OpenSSL 5–9× faster at 16 KiB, VAES
+   assembly).
 7. ML-KEM stretch: OpenSSL 3.5 + Wycheproof showed my nanokem KeyGen used the
    draft `G(d)` instead of final FIPS 203 `G(d‖k)`. Encaps/decaps were fine,
    but seed→key-pair was not. The one-byte fix took it from 0/100 to 100/100.

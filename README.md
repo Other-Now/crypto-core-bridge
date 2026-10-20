@@ -45,7 +45,8 @@ ownership, threading) is [docs/CONTRACT.md](docs/CONTRACT.md).
 
 ## Evidence
 
-All numbers from 2026-10-20, local runs under WSL2 (i5-9300H) unless marked CI.
+All numbers from 2026-10-20. Local = i5-9300H under WSL2; CI = GitHub Actions
+(the same suites run in every CI build; all 8 jobs green).
 
 ### Conformance
 
@@ -63,8 +64,8 @@ All numbers from 2026-10-20, local runs under WSL2 (i5-9300H) unless marked CI.
 
 | check | result |
 |---|---|
-| `cargo-fuzz` `ffi_ops` (raw C ABI: NULLs, short buffers, garbage IDs, canary-checked outputs) | 293k execs/60 s locally, 0 crashes; CI runs 5 min |
-| `cargo-fuzz` `differential` (fuzzer bytes → op sequence on both implementations) | 146k execs/60 s locally, 0 divergences; CI runs 5 min |
+| `cargo-fuzz` `ffi_ops` (raw C ABI: NULLs, short buffers, garbage IDs, canary-checked outputs) | CI: **1.92M execs in 5 min, 0 crashes** |
+| `cargo-fuzz` `differential` (fuzzer bytes → op sequence on both implementations) | CI: **1.27M execs in 5 min, 0 divergences** |
 | Miri on every `unsafe` block (FFI layer driven with the pure-Rust backend) | clean |
 | C++ under ASan + UBSan (unit, cross-language, zeroize) | clean |
 | Zeroization, C++ (OpenSSL + `operator new` hooked, every freed block scanned) | 0 key hits in 6,217 freed blocks; positive control caught |
@@ -73,9 +74,22 @@ All numbers from 2026-10-20, local runs under WSL2 (i5-9300H) unless marked CI.
 | `unsafe` | 32 blocks, all in `ffi.rs`, 32 `SAFETY:` comments (`clippy::undocumented_unsafe_blocks`); 1 `unsafe impl Send` for the cxx type |
 | Hardened build (`scripts/checksec.sh`) | PIE, full RELRO, NX, stack protector, `_FORTIFY_SOURCE=3`, CET on the C++ binaries — **but not** on a binary that links the Rust staticlib (see findings) |
 
-### Cost per operation
+### Cost per operation (CI, AMD EPYC 9V45, median of 15)
 
-See [MIGRATION.md](MIGRATION.md) for the tables and what they imply.
+| | C++ (OpenSSL 3) | Rust (RustCrypto) | Rust/C++ |
+|---|---:|---:|---:|
+| HMAC-SHA256, 64 B | 715 ns | 226 ns | 0.32× |
+| HKDF derive | 2544 ns | 711 ns | 0.28× |
+| AES-GCM seal, 1 KiB | 1300 ns | 1271 ns | 0.98× |
+| AES-GCM seal, 16 KiB | 2.2 µs | 11.9 µs | 5.5× |
+| AES-GCM open, 16 KiB | 1.3 µs | 11.5 µs | 9.2× |
+| PKCS#11 (SoftHSM2) HMAC, 64 B | 38.4 µs | 57.4 µs | 1.5× |
+| bare C-ABI call / noinline C++ call | 0.9 ns / 1.0 ns | | |
+
+Rust wins small operations (OpenSSL 3's per-call provider overhead);
+OpenSSL's AES-GCM assembly wins bulk. The boundary costs what any call
+costs. [MIGRATION.md](MIGRATION.md) has the full tables, the local numbers,
+and the recommendation that follows from them.
 
 ## Findings worth retelling
 
@@ -95,17 +109,22 @@ See [MIGRATION.md](MIGRATION.md) for the tables and what they imply.
 5. **The cxx bridge was 16× slower than the C++ it bridged** at 16 KiB, until
    outputs went into a Rust-presized slice instead of a `rust::Vec` grown by
    `push_back` (one call into Rust per byte).
-6. **`C_FindObjects` was 85% of every PKCS#11 operation** (~0.5 ms of ~0.45–0.5 ms
-   end to end on SoftHSM). A KeyId→handle cache, re-validated on every hit
-   because PKCS#11 does not promise handles are never reused, cut it ~5×.
-   The Rust side stays ~1.4× slower because `cryptoki`'s safe
-   `get_attributes` needs two `C_GetAttributeValue` calls for a
-   variable-length attribute.
+6. **`C_FindObjects` dominated every PKCS#11 operation.** A direct probe
+   measured 506 µs per lookup vs 51 µs for the in-token HMAC itself. A
+   KeyId→handle cache, re-validated on every hit because PKCS#11 does not
+   promise handles are never reused, cut an operation ~5× (local
+   446–460 µs → 83–101 µs). The Rust side stays ~1.45× slower because
+   `cryptoki`'s safe `get_attributes` needs two `C_GetAttributeValue` calls
+   for a variable-length attribute.
 7. **Stretch goal: OpenSSL 3.5 found a bug in my own ML-KEM.** nanokem's
    KeyGen used the 2023-draft `G(d)` instead of final FIPS 203's `G(d ‖ k)`:
    0/100 Wycheproof keygen vectors, 0/1000 seed cross-checks; 100/100 and
    1000/1000 after a one-line patch. See
    [third_party/nanokem/README.md](third_party/nanokem/README.md).
+8. **CI that could not fail.** GitHub's default `bash -e` has no `pipefail`,
+   so `cargo test | tee log` reports `tee`'s status. Noticed when the fuzz
+   job "passed" in 22 s without fuzzing (a musl `cargo-fuzz` cannot build
+   with sanitizers); fixed for every job.
 
 ## Post-quantum stretch (OpenSSL 3.5.9)
 
