@@ -11,6 +11,8 @@
 // repetition takes ~20 ms); prints median / min / max ns per call.
 #include "ccb.h"
 
+#include <openssl/evp.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -103,6 +105,14 @@ int main(int argc, char** argv) {
     volatile uint32_t sink = 0;
     run("crossing", "noinline_cpp_call", 0, [&] { sink = sink + cpp_noinline_version(); });
     run("crossing", "c_abi_call", 0, [&] { sink = sink + ccb_abi_version(); });
+
+    // Attribution: OpenSSL 3 per-call costs that the Rust side does not pay.
+    // The core fetches algorithms once (primitives.cpp); the context
+    // allocation is still per call.
+    run("attrib", "evp_mac_fetch_free", 0, [] { EVP_MAC_free(EVP_MAC_fetch(nullptr, "HMAC", nullptr)); });
+    run("attrib", "evp_cipher_fetch_free", 0,
+        [] { EVP_CIPHER_free(EVP_CIPHER_fetch(nullptr, "AES-256-GCM", nullptr)); });
+    run("attrib", "evp_cipher_ctx_new_free", 0, [] { EVP_CIPHER_CTX_free(EVP_CIPHER_CTX_new()); });
 
     const std::vector<size_t> sizes = {64, 1024, 16384};
     {

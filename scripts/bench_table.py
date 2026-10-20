@@ -54,6 +54,11 @@ z = [cell.get(("attrib", "zeroize_vec", sz)) for sz in (64, 1024, 16384)]
 if all(z):
     print("\n- zeroize of the intermediate plaintext (64 / 1024 / 16384 B): " + " / ".join(fmt(x) for x in z))
 
+for op in ("evp_mac_fetch_free", "evp_cipher_fetch_free", "evp_cipher_ctx_new_free"):
+    r = cell.get(("attrib", op, 0))
+    if r:
+        print(f"- OpenSSL {op}: {float(r['median_ns']):.0f} ns")
+
 p11 = [i for i in ("cpp-p11", "cpp-cxx-p11", "rust-p11", "rust-cabi-p11") if any(k[0] == i for k in cell)]
 if p11:
     print("\n### PKCS#11 backends, SoftHSM2 (median ns/op)\n")
