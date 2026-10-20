@@ -1,0 +1,187 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CCB_P11_TOKEN: ccb
+  CCB_P11_TOKEN2: ccb-b
+  CCB_P11_PIN: "1234"
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+
+jobs:
+  test:
+    name: conformance (Rust + C++ + SoftHSM2)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends softhsm2 libssl-dev ninja-build cmake
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cbindgen@0.29.4
+      - uses: Swatinem/rust-cache@v2
+      - name: SoftHSM2 tokens
+        run: |
+          mkdir -p ~/softhsm/tokens
+          printf 'directories.tokendir = %s\nobjectstore.backend = file\nlog.level = ERROR\n' ~/softhsm/tokens > ~/softhsm/softhsm2.conf
+          bash scripts/init-token.sh
+      - name: Header is up to date (cbindgen)
+        run: bash scripts/gen-header.sh && git diff --exit-code include/ccb.h
+      - name: fmt + clippy
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Rust tests (differential, Wycheproof, planted bugs, zeroize, FFI)
+        run: source scripts/env.sh && cargo test --release --workspace --all-features -- --nocapture --test-threads=1 2>&1 | tee rust-tests.txt
+      - name: C++ build (hardened) + tests
+        run: |
+          bash scripts/build-cpp.sh release
+          source scripts/env.sh
+          $CCB_BUILD/release/test_core
+          $CCB_BUILD/release/xlang
+          $CCB_BUILD/release/zeroize_check
+      - name: Hardening check
+        run: |
+          source scripts/env.sh
+          # xlang links the Rust staticlib, which carries no CET property note;
+          # the check reports that rather than failing on it.
+          bash scripts/checksec.sh $CCB_BUILD/release/test_core
+          bash scripts/checksec.sh $CCB_BUILD/release/xlang || true
+      - name: unsafe audit
+        run: bash scripts/unsafe-audit.sh
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### Conformance'
+            echo '```'
+            grep -E "ops, 0 divergences|planted bugs caught|vectors|hits|control" rust-tests.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  sanitizers:
+    name: C++ ASan + UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends softhsm2 libssl-dev ninja-build cmake
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tokens
+        run: |
+          mkdir -p ~/softhsm/tokens
+          printf 'directories.tokendir = %s\nobjectstore.backend = file\nlog.level = ERROR\n' ~/softhsm/tokens > ~/softhsm/softhsm2.conf
+          bash scripts/init-token.sh
+      - name: Build + run under ASan/UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          bash scripts/build-cpp.sh asan
+          source scripts/env.sh
+          $CCB_BUILD/asan/test_core
+          $CCB_BUILD/asan/xlang
+          $CCB_BUILD/asan/zeroize_check
+
+  miri:
+    name: Miri (every unsafe block in the FFI layer)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - run: cargo miri setup
+      - run: cargo miri test -p ccb --features test-hooks --test miri
+
+  fuzz:
+    name: cargo-fuzz (libFuzzer)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ffi_ops, differential]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz@0.13.2
+      - name: Fuzz ${{ matrix.target }} for 5 minutes
+        working-directory: fuzz
+        run: |
+          mkdir -p corpus/${{ matrix.target }}
+          cargo fuzz run -O ${{ matrix.target }} -- -max_total_time=300 -max_len=4096 -print_final_stats=1 2>&1 | tee fuzz.log | grep -E "^#[0-9]+.*(pulse|DONE)|Done" | tail -5
+          {
+            echo "### fuzz ${{ matrix.target }}"
+            echo '```'
+            grep -E "^#[0-9]+.*DONE|Done|stat::number_of_executed_units|stat::peak_rss_mb" fuzz.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts
+
+  supply-chain:
+    name: cargo-deny + cargo-audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit
+
+  pq:
+    name: ML-KEM / ML-DSA interop (OpenSSL 3.5 vs nanokem)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build cmake
+      - uses: actions/cache@v4
+        id: ossl
+        with:
+          path: ~/ossl35
+          key: openssl-3.5.9-ubuntu-24.04
+      - name: Build OpenSSL 3.5.9
+        if: steps.ossl.outputs.cache-hit != 'true'
+        run: bash scripts/build-openssl35.sh 3.5.9
+      - name: Interop test
+        run: |
+          bash scripts/pq.sh 1000 | tee pq.txt
+          { echo '### PQ interop'; echo '```'; grep -v '^FAIL' pq.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  bench:
+    name: per-operation cost
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends softhsm2 libssl-dev ninja-build cmake
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tokens
+        run: |
+          mkdir -p ~/softhsm/tokens
+          printf 'directories.tokendir = %s\nobjectstore.backend = file\nlog.level = ERROR\n' ~/softhsm/tokens > ~/softhsm/softhsm2.conf
+          bash scripts/init-token.sh
+      - name: Bench
+        run: |
+          lscpu | grep -E "Model name|^CPU\(s\)"
+          CCB_HOST=ci-ubuntu-24.04 bash scripts/bench.sh 15 | tee bench.md
+          { lscpu | grep "Model name"; echo; cat bench.md; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-csv
+          path: results/bench-ci-ubuntu-24.04.csv
