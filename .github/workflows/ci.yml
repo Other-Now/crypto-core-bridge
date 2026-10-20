@@ -5,6 +5,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# `shell: bash` means `bash -eo pipefail`. The implicit default is `bash -e`
+# without pipefail, under which `cargo test | tee log` reports tee's status
+# and a failing test or fuzz run passes silently.
+defaults:
+  run:
+    shell: bash
+
 env:
   CARGO_TERM_COLOR: always
   CCB_P11_TOKEN: ccb
@@ -119,7 +126,8 @@ jobs:
         working-directory: fuzz
         run: |
           mkdir -p corpus/${{ matrix.target }}
-          cargo fuzz run -O ${{ matrix.target }} -- -max_total_time=300 -max_len=4096 -print_final_stats=1 2>&1 | tee fuzz.log | grep -E "^#[0-9]+.*(pulse|DONE)|Done" | tail -5
+          cargo fuzz run -O ${{ matrix.target }} -- -max_total_time=300 -max_len=4096 -print_final_stats=1 > fuzz.log 2>&1 || { tail -60 fuzz.log; exit 1; }
+          grep -E "^#[0-9]+.*(pulse|DONE)|Done" fuzz.log | tail -5
           {
             echo "### fuzz ${{ matrix.target }}"
             echo '```'
