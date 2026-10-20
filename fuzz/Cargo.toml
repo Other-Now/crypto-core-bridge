@@ -1,0 +1,30 @@
+[package]
+name = "ccb-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ccb = { path = "../crates/ccb", features = ["test-hooks"] }
+ccb-cpp = { path = "../crates/ccb-cpp" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "ffi_ops"
+path = "fuzz_targets/ffi_ops.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "differential"
+path = "fuzz_targets/differential.rs"
+test = false
+doc = false
+bench = false
